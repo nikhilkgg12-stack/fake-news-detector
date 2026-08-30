@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # VeriLens — AI-Assisted Misinformation & Fake News Detection Platform
 
 > **"Verify before you share."**  
@@ -166,3 +167,7 @@ All scoring weights and thresholds are strictly centralized in [`src/lib/scoring
 
 ## 📄 License
 MIT License. Built for open and transparent information hygiene.
+=======
+# fake-news-detector
+It is a fully functional fake news detector that contains ai api
+>>>>>>> 3ce249f9c1b640f529d105970ce0d41d3c22b4f7
