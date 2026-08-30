@@ -1,0 +1,102 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  darkMode: 'class',
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        primary: {
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+          50: '#F0F7FF',
+          100: '#E0EFFF',
+          200: '#B9DDFF',
+          300: '#7CC2FF',
+          400: '#36A2FF',
+          500: '#0070F3',
+          600: '#0058C6',
+          700: '#004299',
+          800: '#00337A',
+          900: '#0A1E4A',
+          950: '#061330',
+        },
+        navy: {
+          50: '#F5F7FB',
+          100: '#EBEFF7',
+          200: '#D2DCED',
+          300: '#ADC0DE',
+          400: '#7F9ECA',
+          500: '#5C7FB4',
+          600: '#476596',
+          700: '#395078',
+          800: '#1E293B',
+          900: '#0F172A',
+          950: '#080D1A',
+        },
+        credible: {
+          DEFAULT: '#0D9488',
+          light: '#F0FDFA',
+          border: '#99F6E4',
+          text: '#115E59',
+          dark: '#14B8A6',
+        },
+        misleading: {
+          DEFAULT: '#D97706',
+          light: '#FFFBEB',
+          border: '#FDE68A',
+          text: '#92400E',
+          dark: '#F59E0B',
+        },
+        unproven: {
+          DEFAULT: '#64748B',
+          light: '#F8FAFC',
+          border: '#CBD5E1',
+          text: '#334155',
+          dark: '#94A3B8',
+        },
+        falsehood: {
+          DEFAULT: '#E11D48',
+          light: '#FFF1F2',
+          border: '#FECDD3',
+          text: '#9F1239',
+          dark: '#F43F5E',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        serif: ['Merriweather', 'Georgia', 'serif'],
+        mono: ['JetBrains Mono', 'Menlo', 'monospace'],
+      },
+      borderRadius: {
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)',
+      },
+      animation: {
+        'pulse-subtle': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'fade-in': 'fadeIn 0.3s ease-in-out',
+        'slide-up': 'slideUp 0.3s ease-out',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideUp: {
+          '0%': { transform: 'translateY(10px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+      },
+    },
+  },
+  plugins: [],
+};

@@ -1,0 +1,41 @@
+// Prisma Schema for VeriLens Misinformation Detection Platform
+// Local development uses SQLite; can be seamlessly switched to PostgreSQL for production
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Analysis {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  inputType         String   // "text" | "url" | "claim"
+  inputContent      String   // Original pasted text, URL, or short claim
+  title             String?  // Extracted headline or title
+  domain            String?  // Extracted source domain
+
+  verdict           String   // "likely_credible" | "potentially_misleading" | "insufficient_evidence" | "likely_false"
+  confidence        String   // "low" | "medium" | "high"
+  overallScore      Int      // Raw or calibrated composite index (0-100)
+
+  // JSON serialized fields for structured evidence details
+  dimensionScores   String   // { factCheck: number, sourceReputation: number, corroboration: number, manipulativeLanguage: number, transparency: number }
+  extractedClaims   String   // [{ id: string, text: string, category: string, verifiable: boolean }]
+  factChecks        String   // [{ claim: string, rating: string, publisher: string, reviewDate: string, url: string, normalizedRating: string }]
+  relatedCoverage   String   // [{ title: string, source: string, url: string, date: string, language: string }]
+  sourceProfile     String   // { domain: string, isHttps: boolean, safeBrowsingStatus: string, hasAuthor: boolean, authorName?: string, hasDate: boolean, publishDate?: string, citationCount: number }
+  linguisticSignals String   // { sensationalismScore: number, emotionalScore: number, flaggedPhrases: Array<{ phrase: string, category: string, reason: string, startIndex: number, endIndex: number }> }
+  aiSynthesis       String   // { summary: string, key_findings: string[], limitations: string[], recommended_next_steps: string[] }
+
+  isSample          Boolean  @default(false)
+
+  @@index([verdict])
+  @@index([createdAt])
+  @@index([inputType])
+}
