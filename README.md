@@ -1,6 +1,9 @@
 <<<<<<< HEAD
 # VeriLens — AI-Assisted Misinformation & Fake News Detection Platform
 
+**"LIVE DEMO"**
+https://fake-news-detector-nine-gamma.vercel.app/
+
 > **"Verify before you share."**  
 > VeriLens is a full-stack media forensics platform that generates explainable, evidence-based credibility assessments. It **never** claims absolute certainty or presents AI predictions as ground truth.
 
