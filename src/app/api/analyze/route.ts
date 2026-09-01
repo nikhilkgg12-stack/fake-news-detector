@@ -17,6 +17,8 @@ const analyzeRequestSchema = z.object({
   inputType: z.enum(['text', 'url', 'claim']),
   content: z.string().min(5, 'Content must be at least 5 characters long').max(50000, 'Content must not exceed 50,000 characters'),
   presetId: z.string().optional(),
+  customApiKey: z.string().optional(),
+  customProvider: z.enum(['gemini', 'groq']).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { inputType, content, presetId } = parseResult.data;
+    const { inputType, content, presetId, customApiKey, customProvider } = parseResult.data;
 
     // Check if user is testing a known sample preset and we can serve realistic high-fidelity mock or live analysis
     if (presetId && MOCK_ANALYSES[presetId]) {
@@ -116,7 +118,7 @@ export async function POST(req: NextRequest) {
       rawText,
     });
 
-    // 7. Generate Groq AI / Deterministic Fallback Synthesis
+    // 7. Generate Gemini / Groq AI / Local Forensic Fallback Synthesis
     const aiSynthesis = await generateEvidenceSynthesis({
       verdict: scoringResult.verdict,
       confidence: scoringResult.confidence,
@@ -127,7 +129,9 @@ export async function POST(req: NextRequest) {
       relatedCoverage,
       sourceProfile,
       linguisticSignals,
-      inputContentSnippet: rawText.slice(0, 600),
+      inputContentSnippet: rawText.slice(0, 800),
+      customApiKey,
+      customProvider,
     });
 
     // 8. Construct Final Analysis Result Object

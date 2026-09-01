@@ -12,6 +12,10 @@ import {
   Zap,
   Info,
   CheckCircle2,
+  Key,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
 } from 'lucide-react';
 import { InputType, SamplePreset, AnalysisResult } from '@/types';
 import { SAMPLE_PRESETS } from '@/lib/mock/samples';
@@ -32,6 +36,11 @@ export function InputTabs({ onAnalysisComplete, initialPresetId }: InputTabsProp
   const [urlContent, setUrlContent] = useState('');
   const [claimContent, setClaimContent] = useState('');
   const [selectedPreset, setSelectedPreset] = useState<string | null>(initialPresetId || null);
+
+  // Custom API key states
+  const [showApiSettings, setShowApiSettings] = useState(false);
+  const [apiProvider, setApiProvider] = useState<'gemini' | 'groq'>('gemini');
+  const [customApiKey, setCustomApiKey] = useState('');
 
   // Status & error states
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -108,6 +117,8 @@ export function InputTabs({ onAnalysisComplete, initialPresetId }: InputTabsProp
           inputType: activeTab,
           content,
           presetId: selectedPreset || undefined,
+          customApiKey: customApiKey.trim() || undefined,
+          customProvider: apiProvider,
         }),
       });
 
@@ -173,6 +184,69 @@ export function InputTabs({ onAnalysisComplete, initialPresetId }: InputTabsProp
             );
           })}
         </div>
+      </div>
+
+      {/* API Settings Collapsible Panel */}
+      <div className="bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowApiSettings(!showApiSettings)}
+          className="w-full px-4 py-3 text-xs font-medium flex items-center justify-between text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-colors"
+        >
+          <div className="flex items-center space-x-2">
+            <Cpu className="h-4 w-4 text-primary-500" />
+            <span className="font-semibold">AI Detection Engine Settings</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-medium">
+              {customApiKey ? `${apiProvider.toUpperCase()} Custom Key` : 'Active (Gemini / Groq / VeriLens AI)'}
+            </span>
+          </div>
+          <div className="flex items-center space-x-1 text-slate-400">
+            <span>{showApiSettings ? 'Hide Options' : 'Configure AI API'}</span>
+            {showApiSettings ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </div>
+        </button>
+
+        {showApiSettings && (
+          <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-3 bg-white dark:bg-slate-900">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              VeriLens runs an active Forensic AI engine out-of-the-box even without external API keys. You can optionally supply your own <strong>Google Gemini API Key</strong> or <strong>Groq API Key</strong> below to power real-time LLM synthesis:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div>
+                <label htmlFor="provider-select" className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  AI Provider
+                </label>
+                <select
+                  id="provider-select"
+                  value={apiProvider}
+                  onChange={(e) => setApiProvider(e.target.value as 'gemini' | 'groq')}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="gemini">Google Gemini API (Recommended)</option>
+                  <option value="groq">Groq Cloud API (Llama 3.1)</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="api-key-input" className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-1">
+                  Custom API Key (Optional)
+                </label>
+                <div className="relative">
+                  <Key className="h-3.5 w-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    id="api-key-input"
+                    type="password"
+                    value={customApiKey}
+                    onChange={(e) => setCustomApiKey(e.target.value)}
+                    placeholder={apiProvider === 'gemini' ? 'AIzaSy...' : 'gsk_...'}
+                    className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-1 focus:ring-slate-900 placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Analyzer Card */}

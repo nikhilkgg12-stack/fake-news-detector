@@ -41,7 +41,7 @@ export function evaluateScoring({
 
   // 1. Fact-Check Dimension Score (-100 to 100 -> normalized 0 to 100 for composite)
   let rawFactCheckScore = 0;
-  let factCheckRationale = 'No verified fact-check records found in public databases for these specific claims.';
+  let factCheckRationale = 'No explicit fact-check entry indexed in public databases for these exact words.';
 
   if (factChecks.length > 0) {
     let totalScore = 0;
@@ -65,9 +65,9 @@ export function evaluateScoring({
   // Normalized 0-100 version for fact check (where -100 is 0, 0 is 50, 100 is 100)
   const normalizedFactCheckScore = Math.max(0, Math.min(100, Math.round((rawFactCheckScore + 100) / 2)));
 
-  // 2. Corroboration Score (0 to 100) based on GDELT 2.0 coverage
-  let corroborationScore = 30; // base when uncorroborated
-  let corroborationRationale = 'Few or no independent mainstream news sources are currently reporting this exact event.';
+  // 2. Corroboration Score (0 to 100) based on coverage
+  let corroborationScore = 30; // baseline
+  let corroborationRationale = 'Limited direct mainstream news match found in public search indexes.';
 
   const articleCount = relatedCoverage.length;
   const uniqueDomains = new Set(relatedCoverage.map((a) => a.domain)).size;
@@ -80,7 +80,7 @@ export function evaluateScoring({
     corroborationRationale = `Moderate cross-source reporting detected across ${uniqueDomains} independent outlets.`;
   } else if (articleCount >= 1) {
     corroborationScore = 50;
-    corroborationRationale = `Limited related coverage found (${articleCount} article(s)).`;
+    corroborationRationale = `Corroborating coverage found (${articleCount} related article(s)).`;
   }
 
   // 3. Source Profile Score (0 to 100)
@@ -99,7 +99,7 @@ export function evaluateScoring({
     sourceFactors.push('Google Safe Browsing: Security threats detected');
   }
 
-  if (sourceProfile.domain && sourceProfile.domain !== 'unknown') {
+  if (sourceProfile.domain && sourceProfile.domain !== 'unknown' && sourceProfile.domain !== 'direct-submission') {
     sourceReputationScore += 10;
     sourceFactors.push(`Identified domain (${sourceProfile.domain})`);
   }
@@ -108,7 +108,7 @@ export function evaluateScoring({
   const sourceRationale =
     sourceFactors.length > 0
       ? `Technical signals: ${sourceFactors.join(', ')}.`
-      : 'Default technical profile (no dedicated domain or security flags).';
+      : 'Default technical profile (direct user submission).';
 
   // 4. Manipulative Language Score (0 to 100, higher = cleaner tone)
   const manipulativeLanguageScore = calculateManipulativeLanguageScore(linguisticSignals);
@@ -120,7 +120,7 @@ export function evaluateScoring({
   }
 
   // 5. Transparency & Attribution Score (0 to 100)
-  let transparencyScore = 40; // baseline
+  let transparencyScore = 30; // baseline
   const transparencyFactors: string[] = [];
 
   if (sourceProfile.hasAuthor) {
@@ -143,7 +143,7 @@ export function evaluateScoring({
   const transparencyRationale =
     transparencyFactors.length > 0
       ? `Attribution signals: ${transparencyFactors.join(', ')}.`
-      : 'Limited author byline, date, or citation attribution detected.';
+      : 'Basic author/citation attribution structure.';
 
   // Composite Weighted Calculation
   const factCheckContribution = normalizedFactCheckScore * weights.factCheck;
@@ -206,45 +206,50 @@ export function evaluateScoring({
     },
   ];
 
-  // Determine Calibrated Verdict
-  let verdict: VerdictType = 'insufficient_evidence';
+  // Determine Active Calibrated Verdict (Real vs Fake vs Misleading)
+  let verdict: VerdictType = 'potentially_misleading';
 
   if (factChecks.length > 0) {
     if (rawFactCheckScore <= -40) {
       verdict = 'likely_false';
     } else if (rawFactCheckScore < 20) {
       verdict = 'potentially_misleading';
-    } else if (rawFactCheckScore >= 50 && rawCompositeScore >= thresholds.likelyCredibleMin) {
+    } else if (rawFactCheckScore >= 50) {
       verdict = 'likely_credible';
     } else {
       verdict = 'potentially_misleading';
     }
   } else {
-    // No direct fact check matches
-    if (rawCompositeScore >= thresholds.likelyCredibleMin && corroborationScore >= 75 && manipulativeLanguageScore >= 60) {
+    // When no direct fact-check match is returned, evaluate multi-signal indicators
+    const containsExtremeClickbait = linguisticSignals.flaggedPhrases.some((p) => p.category === 'clickbait' || p.category === 'urgency');
+    const hasHeavyManipulativeLanguage = manipulativeLanguageScore < 45;
+
+    if (hasHeavyManipulativeLanguage || (containsExtremeClickbait && manipulativeLanguageScore < 55)) {
+      verdict = 'likely_false';
+    } else if (relatedCoverage.length >= 2 && rawCompositeScore >= thresholds.likelyCredibleMin && manipulativeLanguageScore >= 65) {
       verdict = 'likely_credible';
-    } else if (manipulativeLanguageScore <= 25 || (corroborationScore <= 30 && manipulativeLanguageScore <= 45)) {
-      verdict = 'potentially_misleading';
     } else if (rawCompositeScore <= thresholds.likelyFalseMax) {
-      verdict = 'potentially_misleading';
-    } else {
+      verdict = 'likely_false';
+    } else if (relatedCoverage.length === 0 && !sourceProfile.hasAuthor && inputType === 'claim') {
       verdict = 'insufficient_evidence';
+    } else {
+      verdict = 'potentially_misleading';
     }
   }
 
   // Determine Calibrated Confidence
-  let confidence: ConfidenceLevel = 'low';
-  let confidenceRationale = 'Limited external evidence available to corroborate or refute the claim.';
+  let confidence: ConfidenceLevel = 'medium';
+  let confidenceRationale = 'Analysis evaluated linguistic signals, source credibility patterns, and external indexes.';
 
-  if (factChecks.length >= 2 || (factChecks.length >= 1 && relatedCoverage.length >= 3)) {
+  if (factChecks.length >= 1) {
     confidence = 'high';
-    confidenceRationale = 'Direct matching fact-check records from recognized fact-checking organizations and corroborating news reports.';
-  } else if (factChecks.length === 1 || relatedCoverage.length >= 4) {
+    confidenceRationale = 'Direct matching fact-check records from recognized fact-checking organizations.';
+  } else if (relatedCoverage.length >= 2 || linguisticSignals.totalWords > 40) {
     confidence = 'medium';
-    confidenceRationale = 'Substantial corroborating coverage or a single matching fact-check entry.';
-  } else if (relatedCoverage.length >= 1 || linguisticSignals.totalWords > 80) {
+    confidenceRationale = 'Forensic evaluation based on rhetorical tone signals, entity credibility, and news search indexes.';
+  } else {
     confidence = 'low';
-    confidenceRationale = 'Preliminary automated assessment based on linguistic signals and limited coverage without direct fact-check consensus.';
+    confidenceRationale = 'Short input text evaluated with baseline structural heuristics.';
   }
 
   const calculationDetails: CalculationDetails = {

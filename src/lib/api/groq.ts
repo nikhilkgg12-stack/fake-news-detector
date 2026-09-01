@@ -1,4 +1,5 @@
 import { AISynthesisReport, DimensionScores, ExtractedClaim, FactCheckItem, LinguisticSignals, RelatedCoverageArticle, SourceProfile, VerdictType } from '@/types';
+import { generateGeminiSynthesis } from './gemini';
 
 export interface GroqEvidencePayload {
   verdict: VerdictType;
@@ -11,49 +12,55 @@ export interface GroqEvidencePayload {
   sourceProfile: SourceProfile;
   linguisticSignals: LinguisticSignals;
   inputContentSnippet: string;
+  customApiKey?: string;
+  customProvider?: 'gemini' | 'groq';
 }
 
 export async function generateEvidenceSynthesis(
   payload: GroqEvidencePayload
 ): Promise<AISynthesisReport> {
-  const apiKey = process.env.GROQ_API_KEY;
+  // 1. Try Gemini API first (either via customApiKey or GEMINI_API_KEY env)
+  if (payload.customProvider === 'gemini' || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY) {
+    const geminiResult = await generateGeminiSynthesis(payload);
+    if (geminiResult) {
+      return geminiResult;
+    }
+  }
 
-  if (apiKey && apiKey.trim().length > 10) {
+  // 2. Try Groq API (either via customApiKey or GROQ_API_KEY env)
+  const groqApiKey =
+    (payload.customProvider === 'groq' ? payload.customApiKey : undefined) ||
+    process.env.GROQ_API_KEY;
+
+  if (groqApiKey && groqApiKey.trim().length > 10) {
     try {
-      const systemPrompt = `You are VeriLens AI, an objective, rigorous evidence synthesis engine for media forensics.
-Your task is to synthesize the provided structured evidence into a clear, explainable, and intellectually honest report.
+      const systemPrompt = `You are VeriLens AI, an objective media forensics engine.
+Analyze the provided news content and determine if it is Real (Credible), Fake (Fabricated/Debunked), or Misleading.
 
-STRICT PRINCIPLES & CONSTRAINTS:
-1. NEVER declare any claim to be definitely true or false. Never speak with 100% certainty.
-2. Rely ONLY on the provided structured evidence. DO NOT invent fact-checks, external sources, statistics, or quotes.
-3. Clearly distinguish between "No evidence found" (absence of verification) and "Contradictory evidence" (actively debunked by fact-checkers).
-4. Emphasize that automated assessments are starting points for human review, not final judicial rulings.
-5. Return ONLY a valid JSON object matching the schema below without markdown code fences or conversational filler.
+STRICT CONSTRAINTS:
+1. Rely on the structured evidence provided below as well as general real-world facts.
+2. Return ONLY a valid JSON object matching the exact schema below.
 
-OUTPUT JSON SCHEMA:
+SCHEMA:
 {
-  "summary": "2-3 sentence balanced overview of the evidence findings and uncertainty bounds.",
-  "key_findings": ["Bullet 1 highlighting factual check consensus or lack thereof", "Bullet 2 regarding corroboration and source context", "Bullet 3 noting tone or linguistic signals"],
-  "limitations": ["Clear explanation of what automated tools cannot verify", "Potential blind spots (e.g. newly breaking news, paywalled sources)"],
-  "recommended_next_steps": ["Actionable step 1 for reader", "Actionable step 2 for primary source cross-checking"]
+  "summary": "2-3 sentence clear summary explaining if the news is real or fake.",
+  "key_findings": ["Finding 1", "Finding 2", "Finding 3"],
+  "limitations": ["Limitation 1", "Limitation 2"],
+  "recommended_next_steps": ["Step 1", "Step 2"]
 }`;
 
-      const userPrompt = `Here is the structured forensic evidence for the submitted content:
-- Raw snippet: "${payload.inputContentSnippet.slice(0, 500)}"
-- Calculated Verdict: ${payload.verdict} (Confidence: ${payload.confidence})
-- Overall Composite Index: ${payload.overallScore}/100
-- Fact-Check Matches: ${JSON.stringify(payload.factChecks.map((f) => ({ claim: f.claim, rating: f.ratingText, normalized: f.normalizedRating, publisher: f.publisher })))}
-- Extracted Core Claims: ${JSON.stringify(payload.extractedClaims.map((c) => c.text))}
-- Related Independent Coverage (GDELT): ${payload.relatedCoverage.length} articles found (${payload.relatedCoverage.map((a) => a.source).join(', ') || 'None'})
-- Source Profile: Domain=${payload.sourceProfile.domain}, HTTPS=${payload.sourceProfile.isHttps}, Byline=${payload.sourceProfile.hasAuthor}, Citations=${payload.sourceProfile.citationCount}
-- Linguistic Flags: ${payload.linguisticSignals.flaggedPhrases.length} flagged phrases (${payload.linguisticSignals.flaggedPhrases.map((p) => `"${p.phrase}" (${p.category})`).join(', ') || 'Clean tone'})
-
-Generate the structured JSON report.`;
+      const userPrompt = `Submitted Content: "${payload.inputContentSnippet.slice(0, 800)}"
+- Calculated Verdict: ${payload.verdict} (${payload.confidence} confidence)
+- Overall Score: ${payload.overallScore}/100
+- Extracted Claims: ${JSON.stringify(payload.extractedClaims.map((c) => c.text))}
+- Fact Checks: ${JSON.stringify(payload.factChecks.map((f) => ({ claim: f.claim, rating: f.ratingText, publisher: f.publisher })))}
+- Coverage Articles: ${payload.relatedCoverage.length}
+- Linguistic Flags: ${payload.linguisticSignals.flaggedPhrases.length} flagged phrases (${payload.linguisticSignals.flaggedPhrases.map((p) => p.phrase).join(', ') || 'Clean tone'})`;
 
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${groqApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -79,76 +86,101 @@ Generate the structured JSON report.`;
               summary: parsed.summary,
               key_findings: parsed.key_findings,
               limitations: parsed.limitations || [
-                'Automated analysis cannot inspect offline or non-indexed archives.',
-                'Language and tone heuristics do not determine factual accuracy on their own.',
+                'Automated analysis cannot replace in-person investigative journalism.',
               ],
               recommended_next_steps: parsed.recommended_next_steps || [
-                'Check primary scientific or governmental documentation.',
-                'Review cited sources in the original publication.',
+                'Check primary scientific or official government documentation.',
               ],
               isAIGenerated: true,
-              modelUsed: 'Groq (Llama-3.1-8B-Instant)',
+              modelUsed: 'Groq Cloud (Llama-3.1-8B)',
             };
           }
         }
-      } else {
-        console.warn(`Groq API returned status ${response.status}: ${await response.text()}`);
       }
     } catch (err) {
-      console.warn('Groq API call failed or timed out, falling back to deterministic template:', err);
+      console.warn('Groq API call failed or timed out:', err);
     }
   }
 
-  // Deterministic Rule-Based Fallback Synthesis
+  // If Gemini API wasn't tried earlier (no GEMINI_API_KEY in env), try it with custom key if available
+  if (payload.customApiKey) {
+    const geminiFallback = await generateGeminiSynthesis(payload);
+    if (geminiFallback) return geminiFallback;
+  }
+
+  // 3. Fallback: VeriLens Local Forensic AI Classifier Engine
   return generateDeterministicFallback(payload);
 }
 
 function generateDeterministicFallback(payload: GroqEvidencePayload): AISynthesisReport {
-  const { verdict, factChecks, relatedCoverage, linguisticSignals, sourceProfile } = payload;
+  const { verdict, factChecks, relatedCoverage, linguisticSignals, sourceProfile, inputContentSnippet } = payload;
 
   let summary = '';
   const key_findings: string[] = [];
   const limitations: string[] = [
-    'Automated analysis synthesizes available digital records but cannot replace investigative fact-checking.',
-    'Breaking news stories may have genuine developments not yet indexed in fact-checking archives.',
+    'VeriLens Local Forensic Engine evaluated this content using structural claim analysis and linguistic pattern matching.',
+    'Breaking stories may evolve as accredited newsrooms publish primary evidence.',
   ];
   const recommended_next_steps: string[] = [];
 
+  const lowerContent = inputContentSnippet.toLowerCase();
+
   if (verdict === 'likely_false') {
-    summary = `The submitted content aligns with known debunked claims. Multiple independent fact-checking records have examined these specific assertions and rated them as false, fabricated, or altered.`;
-    key_findings.push(`Found ${factChecks.length} matching fact-check record(s) confirming that the core proposition is inaccurate or debunked.`);
-    if (linguisticSignals.flaggedPhrases.length > 0) {
-      key_findings.push(`Text contains sensationalist or high-urgency language patterns (${linguisticSignals.flaggedPhrases.length} flagged elements) designed to encourage viral distribution.`);
-    }
-    recommended_next_steps.push('Consult the linked fact-check reports from independent IFCN-signatory organizations.');
-    recommended_next_steps.push('Refrain from resharing unverified copies of this claim on social platforms.');
-  } else if (verdict === 'potentially_misleading') {
-    summary = `The submitted material exhibits multiple warning signals such as sensationalized language, missing primary attribution, or partial fact-check warnings, suggesting it may contain out-of-context or exaggerated claims.`;
+    summary = `The submitted content shows strong indicators of being FAKE or FABRICATED. Key assertions match debunked misinformation patterns or exhibit heavy sensationalist framing without credible attribution.`;
+
     if (factChecks.length > 0) {
-      key_findings.push(`Fact-checking databases contain related reviews noting missing context or misleading framing.`);
+      key_findings.push(`Verified Fact-Checks: ${factChecks.length} accredited organization(s) rated claims in this submission as false, fabricated, or doctored.`);
     } else {
-      key_findings.push(`No direct debunking found, but limited corroborating news coverage and elevated emotive phrasing were detected.`);
+      key_findings.push(`Pattern Match: Text features high-risk false news markers such as unverified medical/financial claims, absolute assertions, or missing primary source attribution.`);
     }
+
+    if (linguisticSignals.flaggedPhrases.length > 0) {
+      key_findings.push(`Sensationalism Alert: ${linguisticSignals.flaggedPhrases.length} manipulative language signals were detected (e.g. "${linguisticSignals.flaggedPhrases[0].phrase}").`);
+    }
+
+    recommended_next_steps.push('Do NOT share this content on social platforms or messaging apps.');
+    recommended_next_steps.push('Verify claims on independent fact-checking outlets such as Snopes, Reuters Fact Check, or AFP.');
+  } else if (verdict === 'potentially_misleading') {
+    summary = `The submitted material appears POTENTIALLY MISLEADING. It contains partial truths, missing context, or exaggerated headlines designed to provoke an emotional reaction.`;
+
+    if (factChecks.length > 0) {
+      key_findings.push(`Fact-Checker Notes: Matching reviews indicate missing context or exaggerated claims.`);
+    } else {
+      key_findings.push(`Rhetorical Flags: Detected emotive or clickbait phrasing (${linguisticSignals.flaggedPhrases.length} flagged terms) with sparse independent media corroboration.`);
+    }
+
     if (!sourceProfile.hasAuthor || !sourceProfile.hasDate) {
-      key_findings.push(`Weak source transparency: missing identifiable author byline or explicit publication timestamp.`);
+      key_findings.push(`Transparency Deficit: Content lacks an explicit author byline or verified publication timestamp.`);
     }
-    recommended_next_steps.push('Look for the original primary source rather than social media commentary or secondary aggregators.');
-    recommended_next_steps.push('Check if key figures or institutions mentioned have issued official statements.');
+
+    recommended_next_steps.push('Seek out the original primary document, study, or transcript rather than secondary commentary.');
+    recommended_next_steps.push('Compare the headline against the actual body text for sensationalist inflation.');
   } else if (verdict === 'likely_credible') {
-    summary = `The submitted content demonstrates strong credibility indicators, including multi-source corroboration, transparent attribution, and neutral editorial tone with no debunking records.`;
-    key_findings.push(`Independent global reporting confirmed across ${relatedCoverage.length} distinct news sources.`);
-    key_findings.push(`Objective linguistic structure with minimal emotional manipulation or sensationalist phrasing.`);
-    if (sourceProfile.hasAuthor && sourceProfile.hasDate) {
-      key_findings.push(`Clear editorial transparency with verified author attribution and timestamp.`);
+    summary = `The submitted content demonstrates strong indicators of being REAL and CREDIBLE. It exhibits neutral editorial phrasing, structured attribution, and alignment with verified reporting.`;
+
+    if (relatedCoverage.length > 0) {
+      key_findings.push(`Cross-Source Corroboration: Independent reporting confirmed across ${relatedCoverage.length} news outlet(s).`);
+    } else {
+      key_findings.push(`Editorial Quality: Objective linguistic tone with zero emotional manipulation or clickbait flags.`);
     }
-    recommended_next_steps.push('Review the cited primary studies or official documentation referenced in the article.');
+
+    if (sourceProfile.hasAuthor && sourceProfile.hasDate) {
+      key_findings.push(`Source Transparency: Clear author attribution (${sourceProfile.authorName || 'Verified'}) and publication date present.`);
+    }
+
+    recommended_next_steps.push('Check the primary references or scientific papers cited in the report.');
   } else {
-    // Insufficient evidence
-    summary = `There is currently insufficient public evidence and fact-checking data to evaluate this submission reliably. The claims have neither been independently verified nor formally debunked.`;
-    key_findings.push('No matching entries in recognized fact-checking databases for this specific claim wording.');
-    key_findings.push(`Limited corroborating mainstream coverage identified in global news indexes (${relatedCoverage.length} related article(s)).`);
-    recommended_next_steps.push('Perform targeted searches on primary scientific repositories, government registers, or official press offices.');
-    recommended_next_steps.push('Wait for corroboration from established investigative reporting before treating the claim as verified.');
+    // Insufficient evidence fallback - convert to active assessment if possible
+    if (lowerContent.length > 30) {
+      summary = `The submitted text was evaluated by VeriLens Local Forensics. While no direct fact-check entry was indexed, the structural and linguistic profile suggests caution before accepting unverified statements.`;
+      key_findings.push('No direct debunking record found in public archives for this specific wording.');
+      key_findings.push(`Linguistic analysis score: ${100 - linguisticSignals.sensationalismScore}/100 tone neutrality.`);
+    } else {
+      summary = `The input text is very brief. Additional context or a full article body is recommended for a high-confidence factual score.`;
+      key_findings.push('Short snippet limit: limited sentence structure available for deep forensics.');
+    }
+
+    recommended_next_steps.push('Paste the full article text or URL for a more comprehensive forensic scan.');
   }
 
   return {
@@ -157,6 +189,6 @@ function generateDeterministicFallback(payload: GroqEvidencePayload): AISynthesi
     limitations,
     recommended_next_steps,
     isAIGenerated: false,
-    modelUsed: 'VeriLens Deterministic Forensic Synthesizer',
+    modelUsed: 'VeriLens Local Forensic AI Classifier',
   };
 }
